@@ -61,3 +61,16 @@ One specific event can cause further problems: sys._getframe() is called repeate
     [logging]
     with_audit = true
     omit_logging_frames = false
+
+Audit events are logged at the AUDIT level which is below TRACE; your logger and handler must be set to that level to 
+see these events:
+
+    [logging.root]
+    level = "AUDIT"
+    handlers = ["console"]
+
+    [logging.handlers.console]
+    class = "logging.StreamHandler"
+    formatter = "brief"
+    level = "AUDIT"
+    stream = "ext://sys.stdout"
