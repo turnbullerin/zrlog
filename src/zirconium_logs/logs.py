@@ -96,7 +96,7 @@ def init_logging(config: zr.ApplicationConfig):
         # Load our logging configuration
         logging.config.dictConfig(config["logging"])
         # If we want to include audit events, set up the logging for them
-        if config.as_bool(("logging", "with_audit"), False):
+        if config.as_bool(("logging", "with_audit"), False) and sys.version_info.major >= 3 and sys.version_info.minor >= 8:
             audit_logger = AuditLog(config.as_bool(("logging", "omit_logging_frames"), True))
             audit_logger.start()
             sys.addaudithook(audit_logger.audit_hook)
