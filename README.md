@@ -31,6 +31,15 @@ Of note, if you want to change a specific logger (which often have dots in the n
     level = "WARNING"
 
 
+## Setting up logging
+
+Logging can be initialized at the appropriate place in your code. This should be AFTER you have registered all your
+configuration with Zirconium but before you want to do any logging.
+
+    import zrlog
+    zrlog.init_logging()
+
+
 ## Additional Logging Levels
 This package adds three additional levels of logging:
 
@@ -52,6 +61,14 @@ the with_audit flag:
     # .logging.toml
     [logging]
     with_audit = true
+
+While the default level is "AUDIT", you can change this to any of the logging level prefixes by specifying the 
+audit_level:
+
+    # .logging.toml
+    [logging]
+    with_audit = true
+    audit_level = "INFO"
 
 One specific event can cause further problems: sys._getframe() is called repeatedly from the logging subsystem in Python
 (in 3.8 at least). These audit events are NOT logged by default, but logging of them can be enabled by turning off the
