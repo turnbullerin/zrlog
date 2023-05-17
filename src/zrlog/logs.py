@@ -2,12 +2,13 @@
 from autoinject import injector
 import zirconium as zr
 import logging.config
+from zrlog.logger import ImprovedLogger, _LogSettingManager
 import logging
 import threading
 import queue
 import sys
 import atexit
-import time
+import os
 
 
 class AuditLog(threading.Thread):
@@ -25,7 +26,7 @@ class AuditLog(threading.Thread):
     def __init__(self, omit_logging_frames=True, log_level="AUDIT"):
         self._write_queue = queue.SimpleQueue()
         self.omit_logging_frames = omit_logging_frames
-        self._halt = False
+        self._halt = threading.Event()
         self.log = logging.getLogger("sys.audit")
         self._log_level_cb = self.log.audit
         if (not log_level == "AUDIT") and hasattr(self.log, log_level.lower()):
@@ -36,30 +37,28 @@ class AuditLog(threading.Thread):
 
     def halt(self):
         """ Stops the thread by setting the _halt flag and then joining. """
-        self._halt = True
+        self._halt.set()
         self.join()
 
     def audit_hook(self, action, info):
         """ Audit hook for sys.addaudithook() that queues the message to be sent. """
-        if not self._halt:
+        if not self._halt.is_set():
             s = "{}: {}".format(action, ";".join(str(x) for x in info))
             # sys._getframe is called a lot when logging, so this prevents a lot of junk from the logging module
             if (not self.omit_logging_frames) or not (action == "sys._getframe" and ("logging\\\\__init__.py" in s or "logging/__init__.py" in s)):
                 self._write_queue.put(s)
-            #self.log.audit(s)
 
     def run(self):
-        """ Implementation of run() """
-        while True:
+        """ Implement of run() """
+        while not self._halt.is_set():
             try:
-                nxt = self._write_queue.get(True, 0.1)
-                self._log_level_cb(nxt)
+                self._log_level_cb(self._write_queue.get(False))
             except queue.Empty as ex:
-                # Check for _halt here to make sure that the queue is empty when we halt
-                if self._halt:
-                    break
+                pass
                 # Give ourselves a bit of a break
-                time.sleep(0.01)
+                self._halt.wait(0.1)
+        while not self._write_queue.empty():
+            self._log_level_cb(self._write_queue.get(False))
 
 
 @zr.configure
@@ -67,35 +66,24 @@ def config_logging(config: zr.ApplicationConfig):
     """ Configuration for zirconium """
     config.register_file("~/.logging.toml")
     config.register_file("./.logging.toml")
+    custom_path = os.environ.get("ZRLOG_CONFIG_FILE")
+    if custom_path:
+        config.register_file(custom_path)
 
 
-def _add_logging_level(level_name, level_no):
-    """ Adds a logging level """
-
-    def log_at_level(message, *args, **kwargs):
-        logging.log(level_no, message, *args, **kwargs)
-
-    level_name = level_name.upper()
-    method_name = level_name.lower()
-    logging.addLevelName(level_no, level_name)
-    setattr(logging, level_name, level_no)
-    setattr(logging, method_name, log_at_level)
+def get_logger(name: str) -> ImprovedLogger:
+    _LogSettingManager.get().init()
+    return logging.getLogger(name)
 
 
 @injector.inject
-def init_logging(config: zr.ApplicationConfig):
+def init_logging(config: zr.ApplicationConfig = None):
     """ Initializes logging from the configuration file as well as adding our custom levels and, if specified, audit
         output
     """
-    # Audit is for the sys.audit(), if enabled
-    _add_logging_level("AUDIT", 1)
-    # Trace is a lower level than debug for even more information
-    _add_logging_level("TRACE", 5)
-    # Out is a level higher than info but lower than warning for what a CLI user might want to see
-    _add_logging_level("OUT", 25)
-    # Import is done here in case something else has overridden the default logging class
-    from .logger import ImprovedLogger
-    logging.setLoggerClass(ImprovedLogger)
+    # Add the additional logging levels
+    instance = _LogSettingManager.get()
+    instance.init()
     if "logging" in config:
         # Load our logging configuration
         logging.config.dictConfig(config["logging"])
@@ -108,3 +96,8 @@ def init_logging(config: zr.ApplicationConfig):
             audit_logger.start()
             sys.addaudithook(audit_logger.audit_hook)
             atexit.register(audit_logger.halt)
+        # Load defaults for extras
+        instance.set_defaults(config.as_dict(("logging", "default_extras"), default={}))
+        # Load stack trace visibility setting
+        instance.show_stack_traces = config.as_bool(("logging", "show_stack_traces"), default=True)
+    logging.getLogger("zrlog").debug("Zirconium-based logging initialized")

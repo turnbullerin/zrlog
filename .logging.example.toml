@@ -1,0 +1,42 @@
+## Configuration example for zrlog
+
+[logging]
+version = 1
+
+## Change this to "true" to include Python's audit hooks in the log files
+# with_audit = false
+
+## Change this to "false" to include the calls to sys._getframe() as well (causes a lot of spam, not recommended)
+# omit_logging_frames = true
+
+## Change the logging level for the audit integration
+#audit_level = "AUDIT"
+
+
+[logging.default_extras]
+## Specify defaults to be included in the extras parameter for every logger
+## This is helpful because loggers will throw an error if the extras is expected
+## but not provided, so specifying a default here will prevent that error.
+# key_name = "default_value"
+
+## See https://docs.python.org/3/library/logging.config.html#logging.config.dictConfig for details on the below settings
+
+## Root logger settings
+[logging.root]
+level = "INFO"
+handlers = ["console"]
+
+## Handlers
+[logging.handlers.console]
+class = "logging.StreamHandler"
+formatter = "brief"
+level = "WARNING"
+stream = "ext://sys.stdout"
+
+## Formatters
+[logging.formatters.brief]
+format = "%(message)s [%(levelname)s]"
+
+## Example of setting the level on a specific logger
+[logging.loggers."logger.name"]
+#level = "WARNING"
